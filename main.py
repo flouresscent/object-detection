@@ -1,100 +1,89 @@
-from array import array
-from lib.libs import *
-from lib.video_proc import *
+import cv2
+import numpy as np
 
-class App(tkinter.Tk):
-    image = Image.open("video-opencv/frame0-00-00.10.jpg")
-    click_num = 0
-    left_top_point = array('i', [0, 0])
-    right_bottom_point = array('i', [0, 0])
+img_path = "src/img_to_choose_obj.png"
+img = cv2.imread(img_path)
+copy = img.copy()
 
-    def choose_obj(self, args):
-        x = self.winfo_pointerx() - self.winfo_rootx()
-        y = self.winfo_pointery() - self.winfo_rooty()
+video_path = "src/video.mp4"
+video = cv2.VideoCapture(video_path)
 
-        if (self.click_num == 0):
-            self.left_top_point = [x, y]
-            print("left_top_point " + str(self.left_top_point))
-            print(self.click_num)
+border_color = [76, 210, 101]
 
-        if (self.click_num == 1):
-            self.right_bottom_point = [x, y]
-            print("right_bottom_point " + str(self.right_bottom_point))
-            print(self.click_num)
+main_win_show = True
 
-            self.image.crop((self.left_top_point[0], self.left_top_point[1], self.right_bottom_point[0], self.right_bottom_point[1])).save('src/test_crop.jpg', quality=95)
-            self.click_num = 0
+click_num = 0
+ltp = [0, 0]
+rbp = [0, 0]
+slctd_obj = False
 
-        self.click_num += 1
-
-    def __init__(self):
-        SAVING_FRAMES_PER_SECOND = 10
-
-        super().__init__()
-        self.title("Object Detection")
-
-        filename, _ = os.path.splitext("video")
-        filename += "-opencv"
-        # создаем папку по названию видео файла
-        if not os.path.isdir(filename):
-            os.mkdir(filename)
-        # читать видео файл    
-        cap = cv2.VideoCapture()
-        cap.open("src/video.mp4")
-        # получить FPS видео
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        # если SAVING_FRAMES_PER_SECOND выше видео FPS, то установите его на FPS (как максимум)
-        saving_frames_per_second = min(fps, SAVING_FRAMES_PER_SECOND)
-        # получить список длительностей для сохранения
-        saving_frames_durations = get_saving_frames_durations(cap, saving_frames_per_second)
-
-        count = 0
-        print("Обработка видео")
-        while True:
-            is_read, frame = cap.read()
-            if not is_read:
-                print("Обработка видео завершена успешно")
-                
-                # выйти из цикла, если нет фреймов для чтения
-                break
-            # получаем продолжительность, разделив количество кадров на FPS
-            frame_duration = count / fps
-            try:
-                # получить самую раннюю продолжительность для сохранения
-                closest_duration = saving_frames_durations[0]
-            except IndexError:
-                # список пуст, все кадры длительности сохранены
-                break
-            if frame_duration >= closest_duration:
-                # если ближайшая длительность меньше или равна длительности кадра,
-                # затем сохраняем фрейм
-                frame_duration_formatted = format_timedelta(timedelta(seconds=frame_duration))
-                cv2.imwrite(os.path.join(filename, f"frame{frame_duration_formatted}.jpg"), frame) 
-                # удалить точку продолжительности из списка, так как эта точка длительности уже сохранена
-                try:
-                    saving_frames_durations.pop(0)
-                except IndexError:
-                    pass
-            # увеличить количество кадров
-            count += 1
-
-
-
-        self.frame = tkinter.Frame(self)
-        self.frame.grid()
-
-        self.image = Image.open("video-opencv/frame0-00-00.10.jpg")
-
-        self.photo = ImageTk.PhotoImage(self.image)
-        self.canvas = tkinter.Canvas(self, width = self.image.width, height = self.image.height)
-        self.c_image = self.canvas.create_image(0, 0, anchor = 'nw', image = self.photo)
-        self.canvas.grid(row = 2, column = 2)
-
-        self.canvas.bind('<Button-1>', self.choose_obj)
+def select_obj(event, x, y, flags, param):
+    global img, copy, click_num, ltp, rbp, slctd_obj
         
-        
+    if event == cv2.EVENT_LBUTTONDOWN:
+        if click_num == 0:
+            img = copy.copy()
+            slctd_obj = False
 
-if __name__ == '__main__':
-    app = App()
-    app.mainloop()
-    
+            ltp = [x, y]
+            click_num += 1
+
+        else:
+            rbp = [x, y]
+            click_num = 0
+            print("[INFO] The object is selected.")
+
+            slctd_obj = True
+
+            cv2.imshow("choosed obj", img[ltp[1]:rbp[1], ltp[0]:rbp[0]]) #! debug
+            cv2.imwrite("src/obj.jpg", img[ltp[1]:rbp[1], ltp[0]:rbp[0]])
+            print("[INFO] The selected object is saved.")
+
+            cv2.rectangle(img, (ltp[0], ltp[1]), (rbp[0], rbp[1]), (border_color[0], border_color[1], border_color[2]), 2)
+
+cv2.namedWindow("main")
+cv2.setMouseCallback("main", select_obj)
+cv2.imshow("main", img)
+
+while True:
+    if slctd_obj:
+        if main_win_show:
+            cv2.destroyWindow("main")
+            main_win_show = False
+
+        success, frame = video.read()
+
+        #methods = [cv2.TM_CCOEFF, cv2.TM_CCOEFF_NORMED, cv2.TM_CCORR, cv2.TM_CCORR_NORMED, cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED] 
+
+        img_to_find_obj = cv2.imread("src/img_to_find_obj5.png")
+        obj = cv2.imread("src/obj.jpg")
+
+        frame_gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+        frame_gray = cv2.GaussianBlur(frame_gray, (5, 5), 0)
+        frame_gray = cv2.Canny(frame_gray, 50, 300)
+        cv2.imshow("test", frame_gray)
+
+        obj_gray = cv2.cvtColor(obj, cv2.COLOR_RGB2GRAY)
+        obj_gray = cv2.GaussianBlur(obj_gray, (5, 5), 0)
+        obj_gray = cv2.Canny(obj_gray, 50, 300)
+        cv2.imwrite("src/obj_proc.jpg", obj_gray)
+        cv2.imshow("test1", obj_gray)
+
+        result = cv2.matchTemplate(frame_gray, obj_gray, cv2.TM_CCOEFF)
+        (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(result)
+
+        (startX, startY) = maxLoc
+        endX = startX + obj.shape[1]
+        endY = startY + obj.shape[0]
+
+        cv2.rectangle(frame, (startX, startY), (endX, endY), (255, 0, 0), 2)
+        cv2.imshow("result", frame)
+
+        print("[INFO] The work of program is finished automatically.")
+        print("[INFO] Video is fully processed.")
+
+    if cv2.waitKey(20) & 0xFF == 27:
+        print("[INFO] The program is certified by pressing 'ESC'.")
+        break
+
+cv2.destroyAllWindows()
